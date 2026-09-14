@@ -216,9 +216,19 @@ async function setupAuthListener() {
                 if (session) {
                     handleAuthState(session);
                 } else {
-                    // Confirmed: genuinely no session — clear cache and handle accordingly
-                    localStorage.removeItem('cachedProfile');
-                    handleAuthState(null);
+                    const demoUser = localStorage.getItem('demoUser');
+                    if (!demoUser && !localStorage.getItem('offlineMode')) {
+                        // Confirmed: genuinely no session — clear cache and handle accordingly
+                        localStorage.removeItem('cachedProfile');
+                        localStorage.removeItem('userRole');
+                        handleAuthState(null);
+                    } else if (demoUser) {
+                        try {
+                            const parsed = JSON.parse(demoUser);
+                            window.currentUserRole = parsed.role || 'teacher';
+                            applyRoleBasedUI(window.currentUserRole);
+                        } catch (e) {}
+                    }
                 }
             } catch (e) {
                 initialSessionResolved = true;
@@ -250,8 +260,11 @@ async function setupAuthListener() {
 }
 
 async function upsertUserProfileAndFetchRole(session) {
+    const cached = JSON.parse(localStorage.getItem('cachedProfile') || 'null');
+    const fallbackRole = (cached && cached.role) || localStorage.getItem('userRole') || 'teacher';
+
     const client = getSupabaseClient();
-    if (!client) return { role: 'teacher', school_name: '' };
+    if (!client) return { role: fallbackRole, school_name: '' };
     
     const meta = session.user.user_metadata || {};
     const email = session.user.email;
@@ -267,38 +280,39 @@ async function upsertUserProfileAndFetchRole(session) {
             .maybeSingle();
             
         if (fetchErr) {
-            console.warn('GET /users error (ignoring and proceeding with upsert):', fetchErr);
+            console.warn('GET /users error (preserving existing role):', fetchErr);
+            return { role: fallbackRole };
         }
             
         if (!profile) {
-            // 2. If it doesn't exist (or fetch failed), upsert the initial profile
+            // 2. If it doesn't exist in DB, create initial profile with fallbackRole (defaulting to teacher only if no role previously known)
             await client.from('users').upsert({
                 id: session.user.id,
                 email: email,
                 name: name,
                 avatar_url: avatarUrl,
-                role: 'teacher' // default role
+                role: fallbackRole
             }, { onConflict: 'id' });
-            return { role: 'teacher' };
+            return { role: fallbackRole };
         } else {
-            // Update name, avatar while preserving role
+            // Update name, avatar while strictly preserving DB role
+            const userRole = profile.role || fallbackRole;
             await client.from('users').upsert({
                 id: session.user.id,
                 email: email,
                 name: name,
                 avatar_url: avatarUrl,
-                role: profile.role || 'teacher',
+                role: userRole,
                 updated_at: new Date().toISOString()
             }, { onConflict: 'id' });
             
             return {
-                role: profile.role || 'teacher'
+                role: userRole
             };
         }
     } catch (err) {
         console.warn('Error upserting user profile:', err);
-        showToast('Warning: Could not save profile or role. You may have limited access.', 'warning');
-        return { role: 'teacher' };
+        return { role: fallbackRole };
     }
 }
 
@@ -340,17 +354,22 @@ async function handleAuthState(session) {
             userAvatar.style.display = avatarUrl ? 'block' : 'none';
         }
 
-        // Fetch role from DB safely without blocking UI
-        let profileInfo = { role: 'teacher' };
+        // Determine current saved role before remote fetch to avoid role flickering
+        const cached = JSON.parse(localStorage.getItem('cachedProfile') || 'null');
+        const currentSavedRole = (cached && cached.role) || localStorage.getItem('userRole') || window.currentUserRole || 'teacher';
+
+        // Fetch role from DB safely without clobbering existing role on timeout
+        let profileInfo = { role: currentSavedRole };
         try {
             profileInfo = await Promise.race([
                 upsertUserProfileAndFetchRole(session),
-                new Promise(resolve => setTimeout(() => resolve({ role: 'teacher' }), 1500))
+                new Promise(resolve => setTimeout(() => resolve({ role: currentSavedRole }), 1500))
             ]);
         } catch (e) {
-            console.warn('Profile fetch timeout/error, using default role:', e);
+            console.warn('Profile fetch timeout/error, retaining role:', e);
         }
-        window.currentUserRole = profileInfo.role || 'teacher';
+        window.currentUserRole = profileInfo.role || currentSavedRole;
+        localStorage.setItem('userRole', window.currentUserRole);
         
         if (userRole) {
             const roleFormatted = window.currentUserRole.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
@@ -368,7 +387,7 @@ async function handleAuthState(session) {
             }
         }
 
-        // Persist profile data to localStorage so banner can be pre-filled on next refresh instantly
+        // Persist profile data to localStorage so banner and role can be pre-filled on next refresh instantly
         localStorage.setItem('cachedProfile', JSON.stringify({
             name: displayName,
             email: session.user.email,
