@@ -390,5 +390,6 @@ async function fetchSlowLearnerFromSupabase(targetDate) {
 }
 
 // Expose these via window if they are needed globally, although app.js generally handles sync
+window.getSupabaseClient = getSupabaseClient;
 window.syncSlowLearnerToSupabase = syncSlowLearnerToSupabase;
 window.fetchSlowLearnerFromSupabase = fetchSlowLearnerFromSupabase;

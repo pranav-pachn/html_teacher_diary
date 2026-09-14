@@ -2,9 +2,30 @@
 //  SLOW LEARNER PROGRESS MONITORING SCRIPT
 // ================================================================
 
+// ================================================================
+//  SLOW LEARNER PROGRESS MONITORING SCRIPT
+// ================================================================
+
 let currentActiveDate = getTodayStr();
 let allSlowLearnerEntries = [];
 let isInitialized = false;
+
+function normalizeDateStr(d) {
+    if (!d) return '';
+    if (typeof d === 'string') {
+        const s = d.trim();
+        if (s.includes('T')) return s.split('T')[0];
+        if (s.includes(' ')) return s.split(' ')[0];
+        return s;
+    }
+    try {
+        const dateObj = new Date(d);
+        if (!isNaN(dateObj.getTime())) {
+            return dateObj.getFullYear() + '-' + String(dateObj.getMonth() + 1).padStart(2, '0') + '-' + String(dateObj.getDate()).padStart(2, '0');
+        }
+    } catch (e) {}
+    return String(d).trim();
+}
 
 function generateUUID() {
     if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -26,8 +47,9 @@ function getTodayStr() {
 
 async function getSlowLearnerStorageKey() {
     let uid = 'offline';
-    if (window.getSupabaseClient) {
-        const client = window.getSupabaseClient();
+    const getClient = window.getSupabaseClient || (typeof getSupabaseClient === 'function' ? getSupabaseClient : null);
+    if (getClient) {
+        const client = getClient();
         if (client) {
             try {
                 const { data: { session } } = await client.auth.getSession();
@@ -48,27 +70,54 @@ async function getSlowLearnerStorageKey() {
 }
 
 async function loadAllSlowLearnerEntries() {
-    // 1. Read from local storage first
+    // 1. Read from primary local storage
     const key = await getSlowLearnerStorageKey();
+    let localEntries = [];
     try {
         const raw = localStorage.getItem(key);
-        if (raw) {
-            allSlowLearnerEntries = JSON.parse(raw);
-        } else {
-            allSlowLearnerEntries = [];
-        }
+        if (raw) localEntries = JSON.parse(raw);
     } catch (e) {
         console.error('Error parsing local slow learner entries', e);
-        allSlowLearnerEntries = [];
+    }
+    if (!Array.isArray(localEntries)) localEntries = [];
+
+    // Also fallback-merge from offline storage so local entries are never dropped
+    if (key !== 'slow_learner_entries_offline') {
+        try {
+            const offRaw = localStorage.getItem('slow_learner_entries_offline');
+            if (offRaw) {
+                const offEntries = JSON.parse(offRaw);
+                if (Array.isArray(offEntries) && offEntries.length > 0) {
+                    const existingIds = new Set(localEntries.map(e => e.id));
+                    offEntries.forEach(oe => {
+                        if (!existingIds.has(oe.id)) localEntries.push(oe);
+                    });
+                }
+            }
+        } catch (e) {}
     }
 
-    // 2. Fetch fresh copy from Supabase if online
-    if (window.fetchSlowLearnerFromSupabase && localStorage.getItem('offlineMode') !== 'true') {
+    allSlowLearnerEntries = localEntries;
+
+    // 2. Fetch fresh copy from Supabase if online and merge
+    const fetchFn = window.fetchSlowLearnerFromSupabase || (typeof fetchSlowLearnerFromSupabase === 'function' ? fetchSlowLearnerFromSupabase : null);
+    if (fetchFn && localStorage.getItem('offlineMode') !== 'true') {
         try {
-            const result = await window.fetchSlowLearnerFromSupabase();
-            if (result.ok && Array.isArray(result.data)) {
-                allSlowLearnerEntries = result.data;
-                await saveSlowLearnerEntriesLocally(allSlowLearnerEntries);
+            const result = await fetchFn();
+            if (result && result.ok && Array.isArray(result.data)) {
+                if (result.data.length > 0) {
+                    const entryMap = new Map();
+                    // Local items first
+                    localEntries.forEach(e => entryMap.set(e.id, e));
+                    // Overlay remote items
+                    result.data.forEach(e => entryMap.set(e.id, e));
+                    allSlowLearnerEntries = Array.from(entryMap.values());
+                    await saveSlowLearnerEntriesLocally(allSlowLearnerEntries);
+                } else if (localEntries.length > 0) {
+                    // Remote has 0 rows, sync local entries up
+                    const syncFn = window.syncSlowLearnerToSupabase || (typeof syncSlowLearnerToSupabase === 'function' ? syncSlowLearnerToSupabase : null);
+                    if (syncFn) syncFn(localEntries);
+                }
             }
         } catch (err) {
             console.warn('Supabase fetch failed/bypassed, using local cache:', err);
@@ -90,14 +139,14 @@ function updateSlDateSubtitle() {
     const input = document.getElementById('slHeaderDateInput');
     const subtitle = document.getElementById('slModalDateSubtitle');
     if (!input || !subtitle) return;
-    const dateVal = input.value || currentActiveDate || getTodayStr();
-    const dateObj = new Date(dateVal);
+    const dateVal = normalizeDateStr(input.value) || currentActiveDate || getTodayStr();
+    const dateObj = new Date(dateVal + 'T00:00:00');
     const dateFormatted = isNaN(dateObj.getTime()) ? dateVal : dateObj.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
     subtitle.textContent = `Date: ${dateFormatted} — Progress Monitoring Record`;
 }
 
 function updateBackLinks(dateStr) {
-    const d = dateStr || currentActiveDate || getTodayStr();
+    const d = normalizeDateStr(dateStr) || currentActiveDate || getTodayStr();
     const backBtn = document.querySelector('.sl-header-back-btn');
     if (backBtn) backBtn.href = `dashboard.html?date=${encodeURIComponent(d)}`;
 }
@@ -107,11 +156,12 @@ function renderSlowLearnerForDate(dateStr) {
     if (!container) return;
     container.innerHTML = '';
 
-    const matching = allSlowLearnerEntries.filter(e => (e.date || '') === dateStr);
+    const targetDate = normalizeDateStr(dateStr) || currentActiveDate;
+    const matching = allSlowLearnerEntries.filter(e => normalizeDateStr(e.date) === targetDate);
 
     if (matching.length === 0) {
         for (let i = 0; i < 5; i++) {
-            addSlowLearnerRow({ date: dateStr });
+            addSlowLearnerRow({ date: targetDate });
         }
     } else {
         matching.forEach(entry => addSlowLearnerRow(entry));
@@ -122,7 +172,7 @@ function addSlowLearnerRow(data = {}) {
     const container = document.getElementById('slModalRowsContainer');
     if (!container) return;
 
-    const defaultDate = data.date || currentActiveDate || (document.getElementById('slHeaderDateInput')?.value) || getTodayStr();
+    const defaultDate = normalizeDateStr(data.date) || currentActiveDate || normalizeDateStr(document.getElementById('slHeaderDateInput')?.value) || getTodayStr();
     const tr = document.createElement('tr');
     tr.className = 'sl-row-item';
     const rowId = data.id || generateUUID();
@@ -132,7 +182,7 @@ function addSlowLearnerRow(data = {}) {
     
     tr.innerHTML = `
         <td>
-            <input type="date" class="sl-input sl-input-date" value="${escapeHtml(defaultDate)}" />
+            <input type="date" class="sl-input sl-input-date" value="${escapeHtml(defaultDate)}" onchange="handleRowDateChange(this)" />
         </td>
         <td>
             <select class="sl-input sl-input-class"><option value="">-</option>${classOpts}</select>
@@ -178,6 +228,16 @@ function addSlowLearnerRow(data = {}) {
     container.appendChild(tr);
 }
 
+function handleRowDateChange(input) {
+    const tr = input.closest('tr');
+    if (!tr) return;
+    const rowDate = normalizeDateStr(input.value);
+    if (rowDate && rowDate !== currentActiveDate) {
+        // Update row attribute or keep in current dataset
+        tr.setAttribute('data-date', rowDate);
+    }
+}
+
 function removeSlowLearnerRow(btn) {
     const tr = btn.closest('tr');
     if (tr) tr.remove();
@@ -201,7 +261,8 @@ function collectRowsFromDOM() {
     const entries = [];
 
     rows.forEach(tr => {
-        const date = tr.querySelector('.sl-input-date')?.value || currentActiveDate;
+        const rowDateInput = tr.querySelector('.sl-input-date')?.value;
+        const date = normalizeDateStr(rowDateInput) || currentActiveDate;
         const className = tr.querySelector('.sl-input-class')?.value || '';
         const section = tr.querySelector('.sl-input-section')?.value.trim() || '';
         const studentName = tr.querySelector('.sl-input-name')?.value.trim() || '';
@@ -238,15 +299,28 @@ async function collectAndPersistCurrentDate(syncToRemote = false) {
     const currentRows = collectRowsFromDOM();
     const validRows = currentRows.filter(r => r.studentName || r.learningGap || r.subject || r.className);
 
-    // Replace currentActiveDate rows in allSlowLearnerEntries
-    const otherDates = allSlowLearnerEntries.filter(e => (e.date || '') !== currentActiveDate);
+    // Normalize date on all valid rows
+    validRows.forEach(r => {
+        r.date = normalizeDateStr(r.date) || currentActiveDate;
+    });
+
+    // Replace entries for currentActiveDate
+    const otherDates = allSlowLearnerEntries.filter(e => normalizeDateStr(e.date) !== currentActiveDate);
     allSlowLearnerEntries = [...otherDates, ...validRows];
 
     await saveSlowLearnerEntriesLocally(allSlowLearnerEntries);
 
-    if (syncToRemote && window.syncSlowLearnerToSupabase && localStorage.getItem('offlineMode') !== 'true') {
-        const syncResult = await window.syncSlowLearnerToSupabase(validRows, currentActiveDate);
-        return syncResult;
+    if (syncToRemote && localStorage.getItem('offlineMode') !== 'true') {
+        const syncFn = window.syncSlowLearnerToSupabase || (typeof syncSlowLearnerToSupabase === 'function' ? syncSlowLearnerToSupabase : null);
+        if (syncFn) {
+            try {
+                const syncResult = await syncFn(validRows, currentActiveDate);
+                return syncResult;
+            } catch (err) {
+                console.error('Supabase sync error:', err);
+                return { ok: false, error: err.message };
+            }
+        }
     }
     return { ok: true };
 }
@@ -254,15 +328,18 @@ async function collectAndPersistCurrentDate(syncToRemote = false) {
 async function handleDateChange() {
     const dateInput = document.getElementById('slHeaderDateInput');
     if (!dateInput || !dateInput.value) return;
-    const newDate = dateInput.value;
+    const newDate = normalizeDateStr(dateInput.value);
     if (newDate === currentActiveDate) return;
 
-    // Persist current edits before switching
+    // 1. Persist current edits before switching dates
     await collectAndPersistCurrentDate(false);
 
+    // 2. Switch date
     currentActiveDate = newDate;
     updateSlDateSubtitle();
     updateBackLinks(newDate);
+
+    // 3. Render rows for new date
     renderSlowLearnerForDate(newDate);
 }
 
@@ -273,8 +350,8 @@ async function saveAllSlowLearnerRows(redirectOnSave = true) {
     if (syncResult && syncResult.ok) {
         syncMsg = 'Synced to Supabase.';
     } else if (syncResult && syncResult.error) {
-        console.error('Supabase sync error:', syncResult.error);
-        syncMsg = 'Saved locally (Sync pending).';
+        console.warn('Supabase sync warning:', syncResult.error);
+        syncMsg = 'Saved locally.';
     }
 
     if (typeof showToast === 'function') {
@@ -289,7 +366,7 @@ async function saveAllSlowLearnerRows(redirectOnSave = true) {
 }
 
 function navigateBackToDashboard() {
-    const d = currentActiveDate || document.getElementById('slHeaderDateInput')?.value || '';
+    const d = currentActiveDate || normalizeDateStr(document.getElementById('slHeaderDateInput')?.value) || '';
     window.location.href = d ? `dashboard.html?date=${encodeURIComponent(d)}` : 'dashboard.html';
 }
 
@@ -343,19 +420,20 @@ async function initSlowLearner() {
     if (isInitialized) return;
     isInitialized = true;
 
-    // 1. Resolve active date from URL query parameter or fallback to today
+    // 1. Resolve active date from URL query parameter or header input or today
     const urlParams = new URLSearchParams(window.location.search);
     const paramDate = urlParams.get('date');
     if (paramDate && /^\d{4}-\d{2}-\d{2}$/.test(paramDate)) {
-        currentActiveDate = paramDate;
+        currentActiveDate = normalizeDateStr(paramDate);
     } else {
-        currentActiveDate = getTodayStr();
+        const headerVal = document.getElementById('slHeaderDateInput')?.value;
+        currentActiveDate = headerVal ? normalizeDateStr(headerVal) : getTodayStr();
     }
 
     const dateInput = document.getElementById('slHeaderDateInput');
     if (dateInput) {
         dateInput.value = currentActiveDate;
-        dateInput.addEventListener('change', handleDateChange);
+        dateInput.onchange = handleDateChange;
     }
     updateSlDateSubtitle();
     updateBackLinks(currentActiveDate);
@@ -371,9 +449,10 @@ async function initSlowLearner() {
     renderSlowLearnerForDate(currentActiveDate);
 
     // 3. Load student autocomplete database
-    if (typeof loadTestStudents === 'function') {
+    const loadFn = window.loadTestStudents || (typeof loadTestStudents === 'function' ? loadTestStudents : null);
+    if (loadFn) {
         try {
-            await loadTestStudents();
+            await loadFn();
         } catch (error) {
             console.error('Error loading student autocomplete DB:', error);
         }
@@ -383,6 +462,7 @@ async function initSlowLearner() {
 // Expose functions globally
 window.initSlowLearner = initSlowLearner;
 window.handleDateChange = handleDateChange;
+window.handleRowDateChange = handleRowDateChange;
 window.navigateBackToDashboard = navigateBackToDashboard;
 window.getSlowLearnerEntries = loadAllSlowLearnerEntries;
 window.saveSlowLearnerEntriesLocally = saveSlowLearnerEntriesLocally;
