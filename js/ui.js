@@ -46,8 +46,16 @@ function parseClassSection(val) {
 
 async function renderDailyTab() {
     const dateInput = document.getElementById('dailyDate');
-    if (!dateInput.value) dateInput.value = getTodayStr();
-    const dateStr = dateInput.value;
+    if (dateInput && !dateInput.value) {
+        const urlParams = new URLSearchParams(window.location.search);
+        const paramDate = urlParams.get('date');
+        if (paramDate && /^\d{4}-\d{2}-\d{2}$/.test(paramDate)) {
+            dateInput.value = paramDate;
+        } else {
+            dateInput.value = getTodayStr();
+        }
+    }
+    const dateStr = (dateInput && dateInput.value) ? dateInput.value : getTodayStr();
     const settings = getSettings();
     const periodsPerDay = settings.periodsPerDay || 8;
     const entry = getDayEntry(dateStr);
@@ -57,11 +65,19 @@ async function renderDailyTab() {
     if (!container) return; // Might be hidden
     container.innerHTML = '<div style="text-align:center; padding: 20px;"><span class="spinner"></span> Loading timetable...</div>';
     
-    // Fetch timetable
+    // Fetch timetable safely with timeout so UI never hangs
+    let timetableMap = window.currentTimetableMap || {};
     if (typeof fetchTodayTimetable === 'function') {
-        await fetchTodayTimetable(dateStr);
+        try {
+            const fetched = await Promise.race([
+                fetchTodayTimetable(dateStr),
+                new Promise(resolve => setTimeout(() => resolve({}), 1200))
+            ]);
+            if (fetched) timetableMap = fetched;
+        } catch (err) {
+            console.warn('Timetable fetch bypassed due to error/timeout:', err);
+        }
     }
-    const timetableMap = window.currentTimetableMap || {}; 
     container.innerHTML = `<div class="grid-header" id="gridHeader">
         <div></div>
         <div>Period</div>

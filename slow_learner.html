@@ -5,6 +5,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>🌱 Slow Learner Progress Monitoring</title>
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -18,20 +19,20 @@
     <div class="sl-standalone-page">
         <!-- Header -->
         <div class="sl-modal-header">
-            <a href="dashboard.html" class="sl-header-back-btn">
+            <a href="dashboard.html" class="sl-header-back-btn" onclick="navigateBackToDashboard(); return false;">
                 <span>←</span> Back to Dashboard
             </a>
-            <button class="sl-modal-close" onclick="window.location.href='dashboard.html'" title="Close">&times;</button>
+            <button class="sl-modal-close" onclick="navigateBackToDashboard()" title="Close">&times;</button>
             <div class="sl-modal-school">DELHI SECONDARY SCHOOL</div>
             <h2 class="sl-modal-heading">SLOW LEARNER PROGRESS MONITORING</h2>
-            <div class="sl-modal-subdate" id="slModalDateSubtitle">Date: Tue, Aug 18, 2026 — Progress Monitoring Record</div>
+            <div class="sl-modal-subdate" id="slModalDateSubtitle">Date: Progress Monitoring Record</div>
         </div>
 
         <!-- Top Action Bar -->
         <div class="sl-modal-topbar">
             <div class="sl-date-input-wrap">
                 <label for="slHeaderDateInput">Date:</label>
-                <input type="date" id="slHeaderDateInput" onchange="updateSlDateSubtitle()" />
+                <input type="date" id="slHeaderDateInput" onchange="handleDateChange()" />
             </div>
             <button type="button" class="btn-sl-add-row" onclick="addSlowLearnerRow()">
                 <span>+</span> Add Student Row
@@ -72,7 +73,7 @@
                 </button>
             </div>
             <div class="sl-footer-right">
-                <button type="button" class="btn-sl-footer btn-sl-cancel" onclick="window.location.href='dashboard.html'">
+                <button type="button" class="btn-sl-footer btn-sl-cancel" onclick="navigateBackToDashboard()">
                     Cancel
                 </button>
                 <button type="button" class="btn-sl-footer btn-sl-save" onclick="saveAllSlowLearnerRows(true)">
@@ -84,30 +85,25 @@
 
     <!-- Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="js/boot.js"></script>
-    <script src="js/data.js?v=9.2"></script>
-    <script src="js/toast.js?v=9.2"></script>
-    <script src="js/supabase.js?v=9.2"></script>
-    <script src="js/auth.js?v=9.2"></script>
-    <script src="js/csv.js?v=9.3"></script>
-    <script src="js/slow_learner.js?v=9.2"></script>
+    <script src="js/boot.js" defer></script>
+    <script src="js/data.js?v=9.2" defer></script>
+    <script src="js/toast.js?v=9.2" defer></script>
+    <script src="js/env.js" defer></script>
+    <script src="js/supabase.js?v=9.2" defer></script>
+    <script src="js/auth.js?v=9.2" defer></script>
+    <script src="js/csv.js?v=9.3" defer></script>
+    <script src="js/slow_learner.js?v=9.2" defer></script>
     <script>
-        document.addEventListener('DOMContentLoaded', async () => {
-            const dateInput = document.getElementById('slHeaderDateInput');
-            if (dateInput) {
-                dateInput.value = window.getTodayStr ? window.getTodayStr() : '2026-08-18';
-                updateSlDateSubtitle();
+        function runSlowLearnerInit() {
+            if (typeof initSlowLearner === 'function') {
+                initSlowLearner();
             }
-            const entries = await getSlowLearnerEntries();
-            renderModalRows(entries);
-            if (typeof loadTestStudents === 'function') {
-                try {
-                    await loadTestStudents();
-                } catch (error) {
-                    console.error(error);
-                }
-            }
-        });
+        }
+        if (typeof window.onAppReady === 'function') {
+            window.onAppReady(runSlowLearnerInit);
+        } else {
+            window.addEventListener('appReady', runSlowLearnerInit);
+        }
     </script>
 </body>
 

@@ -300,7 +300,7 @@ async function saveEntryToSupabase(dateStr, periods) {
 //  SLOW LEARNER PROGRESS SYNC
 // ================================================================
 
-async function syncSlowLearnerToSupabase(entries) {
+async function syncSlowLearnerToSupabase(entries, targetDate) {
     const client = getSupabaseClient();
     if (!client) return { ok: false, error: 'Supabase not configured' };
 
@@ -308,14 +308,26 @@ async function syncSlowLearnerToSupabase(entries) {
         const { data: { session } } = await client.auth.getSession();
         if (!session) return { ok: false, error: 'No active session' };
 
-        const rows = entries.map(e => ({
+        // If targetDate specified, clean-sync that date so deleted rows are pruned
+        if (targetDate) {
+            const { error: delError } = await client
+                .from('slow_learner_entries')
+                .delete()
+                .eq('teacher_id', session.user.id)
+                .eq('date', targetDate);
+
+            if (delError) console.warn('Warning clearing slow learner entries for date:', delError);
+        }
+
+        const validEntries = entries.filter(e => e.studentName && e.studentName.trim());
+        const rows = validEntries.map(e => ({
             id: e.id,
             teacher_id: session.user.id,
-            date: e.date,
+            date: e.date || targetDate,
             class_name: e.className || '',
             section: e.section || '',
             student_id: e.studentId || '',
-            student_name: e.studentName || '',
+            student_name: e.studentName.trim(),
             subject: e.subject || '',
             learning_gap: e.learningGap || '',
             strategy: e.strategy || '',
@@ -336,7 +348,7 @@ async function syncSlowLearnerToSupabase(entries) {
     }
 }
 
-async function fetchSlowLearnerFromSupabase() {
+async function fetchSlowLearnerFromSupabase(targetDate) {
     const client = getSupabaseClient();
     if (!client) return { ok: false, error: 'Supabase not configured' };
 
@@ -344,11 +356,16 @@ async function fetchSlowLearnerFromSupabase() {
         const { data: { session } } = await client.auth.getSession();
         if (!session) return { ok: false, error: 'No active session' };
 
-        const { data, error } = await client
+        let query = client
             .from('slow_learner_entries')
             .select('*')
-            .eq('teacher_id', session.user.id)
-            .order('date', { ascending: false });
+            .eq('teacher_id', session.user.id);
+
+        if (targetDate) {
+            query = query.eq('date', targetDate);
+        }
+
+        const { data, error } = await query.order('date', { ascending: false });
 
         if (error) return { ok: false, error: error.message };
 

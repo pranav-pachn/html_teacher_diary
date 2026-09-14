@@ -5,6 +5,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>📚 Teacher's Daily Planner</title>
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
     <!-- Supabase JS SDK -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2">
     </script>
@@ -134,22 +135,27 @@
     </div>
 
     <!-- Intro.js Library -->
-    <script src="https://cdn.jsdelivr.net/npm/intro.js@7.2.0/intro.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/intro.js@7.2.0/intro.min.js" defer></script>
 
-    <script src="js/boot.js"></script>
-    <script src="js/data.js?v=7.0"></script>
-    <script src="js/toast.js?v=7.0"></script>
-    <script src="js/env.js"></script>
-    <script src="js/supabase.js?v=7.0"></script>
-    <script src="js/storage-manager.js?v=7.0"></script>
-    <script src="js/api.js?v=7.0"></script>
-    <script src="js/auth.js?v=7.0"></script>
+    <script src="js/boot.js" defer></script>
+    <script src="js/data.js?v=7.0" defer></script>
+    <script src="js/toast.js?v=7.0" defer></script>
+    <script src="js/env.js" defer></script>
+    <script src="js/supabase.js?v=7.0" defer></script>
+    <script src="js/storage-manager.js?v=7.0" defer></script>
+    <script src="js/api.js?v=7.0" defer></script>
+    <script src="js/auth.js?v=7.0" defer></script>
     <script>
-        window.addEventListener('appReady', () => {
+        function runAuthSetup() {
             if (typeof setupAuthListener === 'function') {
                 setupAuthListener();
             }
-        });
+        }
+        if (typeof window.onAppReady === 'function') {
+            window.onAppReady(runAuthSetup);
+        } else {
+            window.addEventListener('appReady', runAuthSetup);
+        }
     </script>
 
     <!-- ====== AUTH OVERLAY ====== -->

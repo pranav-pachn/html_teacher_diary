@@ -167,10 +167,11 @@ function init() {
     });
 }
 
-// run — also self-init if appReady already fired before this script loaded (offline mode race)
-window.addEventListener('appReady', init);
-if (window.__appReady) {
-    init();
+// run safely via onAppReady helper
+if (typeof window.onAppReady === 'function') {
+    window.onAppReady(init);
+} else {
+    window.addEventListener('appReady', init);
 }
 
 

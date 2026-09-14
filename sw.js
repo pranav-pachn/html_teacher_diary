@@ -1,18 +1,34 @@
-const CACHE_NAME = 'teacher-diary-v55';
+const CACHE_NAME = 'teacher-diary-v56';
 const ASSETS = [
     './',
     './index.html',
     './dashboard.html',
     './slow_learner.html',
+    './config/schools.v1.json',
     './css/styles.css',
     './css/slow_learner.css',
-    './js/app.js',
-    './js/ui.js',
+    './js/boot.js',
     './js/data.js',
-    './js/auth.js',
+    './js/toast.js',
+    './js/env.js',
     './js/supabase.js',
     './js/file-upload.js',
-    './js/slow_learner.js'
+    './js/storage-manager.js',
+    './js/api.js',
+    './js/csv.js',
+    './js/auth.js',
+    './js/approval.js',
+    './js/history.js',
+    './js/ui.js',
+    './js/curriculum.js',
+    './js/autocomplete.js',
+    './js/tour.js',
+    './js/timetable.js',
+    './js/admin.js',
+    './js/principal.js',
+    './js/notifications.js',
+    './js/slow_learner.js',
+    './js/app.js'
 ];
 
 self.addEventListener('install', event => {
@@ -20,14 +36,14 @@ self.addEventListener('install', event => {
         caches.open(CACHE_NAME).then(cache => {
             return Promise.all(
                 ASSETS.map(url => {
-                    return fetch(new Request(url, { cache: 'no-cache' }))
+                    return fetch(new Request(url, { cache: 'reload' }))
                         .then(response => {
                             if (!response.ok) throw new Error('Network response was not ok');
                             return cache.put(url, response);
                         });
                 })
             ).catch(err => {
-                console.warn('Service worker install error (some assets might fail):', err);
+                console.warn('Service worker install warning:', err);
             });
         })
     );
@@ -51,25 +67,23 @@ self.addEventListener('fetch', event => {
     // We only want to cache GET requests for our own origin
     if (event.request.method !== 'GET') return;
     
-    // Ignore supabase API requests or external CDNs in standard cache (cache only local static assets)
     const url = new URL(event.request.url);
     if (!url.origin.includes(location.origin)) return;
     
     event.respondWith(
         caches.match(event.request).then(cachedResponse => {
             if (cachedResponse) {
-                // Return cached version but fetch from network in background to update cache
-                event.waitUntil(
-                    fetch(event.request).then(response => {
-                        return caches.open(CACHE_NAME).then(cache => {
-                            cache.put(event.request, response.clone());
-                        });
-                    }).catch(() => { /* Ignore network errors in background update */ })
-                );
                 return cachedResponse;
             }
-            return fetch(event.request).catch(() => {
-                // Fallback for failed network requests when offline
+            return fetch(event.request).then(networkResponse => {
+                if (networkResponse && networkResponse.status === 200) {
+                    const responseClone = networkResponse.clone();
+                    caches.open(CACHE_NAME).then(cache => {
+                        cache.put(event.request, responseClone);
+                    });
+                }
+                return networkResponse;
+            }).catch(() => {
                 console.warn('Network request failed and not in cache:', event.request.url);
             });
         })

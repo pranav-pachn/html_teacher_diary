@@ -340,9 +340,17 @@ async function handleAuthState(session) {
             userAvatar.style.display = avatarUrl ? 'block' : 'none';
         }
 
-        // Fetch role from DB
-        const profileInfo = await upsertUserProfileAndFetchRole(session);
-        window.currentUserRole = profileInfo.role;
+        // Fetch role from DB safely without blocking UI
+        let profileInfo = { role: 'teacher' };
+        try {
+            profileInfo = await Promise.race([
+                upsertUserProfileAndFetchRole(session),
+                new Promise(resolve => setTimeout(() => resolve({ role: 'teacher' }), 1500))
+            ]);
+        } catch (e) {
+            console.warn('Profile fetch timeout/error, using default role:', e);
+        }
+        window.currentUserRole = profileInfo.role || 'teacher';
         
         if (userRole) {
             const roleFormatted = window.currentUserRole.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());

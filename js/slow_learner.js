@@ -2,8 +2,21 @@
 //  SLOW LEARNER PROGRESS MONITORING SCRIPT
 // ================================================================
 
+let currentActiveDate = getTodayStr();
+let allSlowLearnerEntries = [];
+let isInitialized = false;
+
 function generateUUID() {
-    return typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'sl-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        try {
+            return crypto.randomUUID();
+        } catch (e) {}
+    }
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        const r = Math.random() * 16 | 0;
+        const v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+    });
 }
 
 function getTodayStr() {
@@ -16,33 +29,52 @@ async function getSlowLearnerStorageKey() {
     if (window.getSupabaseClient) {
         const client = window.getSupabaseClient();
         if (client) {
-            const { data: { session } } = await client.auth.getSession();
-            if (session?.user?.id) uid = session.user.id;
+            try {
+                const { data: { session } } = await client.auth.getSession();
+                if (session?.user?.id) uid = session.user.id;
+            } catch (e) {}
+        }
+    }
+    if (uid === 'offline') {
+        const cached = localStorage.getItem('cachedProfile');
+        if (cached) {
+            try {
+                const p = JSON.parse(cached);
+                if (p.email) uid = p.email;
+            } catch (e) {}
         }
     }
     return `slow_learner_entries_${uid}`;
 }
 
-async function getSlowLearnerEntries() {
-    // 1. Try to fetch from Supabase if online
-    if (window.fetchSlowLearnerFromSupabase && localStorage.getItem('offlineMode') !== 'true') {
-        const result = await window.fetchSlowLearnerFromSupabase();
-        if (result.ok && result.data && result.data.length > 0) {
-            await saveSlowLearnerEntriesLocally(result.data);
-            return result.data;
-        }
-    }
-    
-    // 2. Fallback to local storage
+async function loadAllSlowLearnerEntries() {
+    // 1. Read from local storage first
     const key = await getSlowLearnerStorageKey();
     try {
         const raw = localStorage.getItem(key);
-        if (!raw) return [];
-        return JSON.parse(raw);
+        if (raw) {
+            allSlowLearnerEntries = JSON.parse(raw);
+        } else {
+            allSlowLearnerEntries = [];
+        }
     } catch (e) {
-        console.error('Error fetching slow learner entries', e);
-        return [];
+        console.error('Error parsing local slow learner entries', e);
+        allSlowLearnerEntries = [];
     }
+
+    // 2. Fetch fresh copy from Supabase if online
+    if (window.fetchSlowLearnerFromSupabase && localStorage.getItem('offlineMode') !== 'true') {
+        try {
+            const result = await window.fetchSlowLearnerFromSupabase();
+            if (result.ok && Array.isArray(result.data)) {
+                allSlowLearnerEntries = result.data;
+                await saveSlowLearnerEntriesLocally(allSlowLearnerEntries);
+            }
+        } catch (err) {
+            console.warn('Supabase fetch failed/bypassed, using local cache:', err);
+        }
+    }
+    return allSlowLearnerEntries;
 }
 
 async function saveSlowLearnerEntriesLocally(entries) {
@@ -58,35 +90,43 @@ function updateSlDateSubtitle() {
     const input = document.getElementById('slHeaderDateInput');
     const subtitle = document.getElementById('slModalDateSubtitle');
     if (!input || !subtitle) return;
-    const dateVal = input.value || getTodayStr();
+    const dateVal = input.value || currentActiveDate || getTodayStr();
     const dateObj = new Date(dateVal);
-    const dateFormatted = isNaN(dateObj) ? dateVal : dateObj.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+    const dateFormatted = isNaN(dateObj.getTime()) ? dateVal : dateObj.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
     subtitle.textContent = `Date: ${dateFormatted} — Progress Monitoring Record`;
 }
 
-function renderModalRows(entries) {
+function updateBackLinks(dateStr) {
+    const d = dateStr || currentActiveDate || getTodayStr();
+    const backBtn = document.querySelector('.sl-header-back-btn');
+    if (backBtn) backBtn.href = `dashboard.html?date=${encodeURIComponent(d)}`;
+}
+
+function renderSlowLearnerForDate(dateStr) {
     const container = document.getElementById('slModalRowsContainer');
     if (!container) return;
     container.innerHTML = '';
 
-    if (!entries || entries.length === 0) {
-        for (let i = 0; i < 5; i++) {
-            addSlowLearnerRow();
-        }
-        return;
-    }
+    const matching = allSlowLearnerEntries.filter(e => (e.date || '') === dateStr);
 
-    entries.forEach(entry => addSlowLearnerRow(entry));
+    if (matching.length === 0) {
+        for (let i = 0; i < 5; i++) {
+            addSlowLearnerRow({ date: dateStr });
+        }
+    } else {
+        matching.forEach(entry => addSlowLearnerRow(entry));
+    }
 }
 
 function addSlowLearnerRow(data = {}) {
     const container = document.getElementById('slModalRowsContainer');
     if (!container) return;
 
-    const defaultDate = data.date || (document.getElementById('slHeaderDateInput')?.value) || getTodayStr();
+    const defaultDate = data.date || currentActiveDate || (document.getElementById('slHeaderDateInput')?.value) || getTodayStr();
     const tr = document.createElement('tr');
     tr.className = 'sl-row-item';
-    tr.setAttribute('data-id', escapeHtml(data.id || ''));
+    const rowId = data.id || generateUUID();
+    tr.setAttribute('data-id', escapeHtml(rowId));
 
     const classOpts = [1,2,3,4,5,6,7,8,9,10].map(n => `<option value="${n}" ${data.className === String(n) ? 'selected' : ''}>${n}</option>`).join('');
     
@@ -141,23 +181,27 @@ function addSlowLearnerRow(data = {}) {
 function removeSlowLearnerRow(btn) {
     const tr = btn.closest('tr');
     if (tr) tr.remove();
-}
-
-function clearAllSlowLearnerRows() {
-    if (!confirm('Are you sure you want to clear all rows?')) return;
     const container = document.getElementById('slModalRowsContainer');
-    if (container) container.innerHTML = '';
-    for (let i = 0; i < 5; i++) {
-        addSlowLearnerRow();
+    if (container && container.querySelectorAll('tr.sl-row-item').length === 0) {
+        addSlowLearnerRow({ date: currentActiveDate });
     }
 }
 
-async function saveAllSlowLearnerRows(redirectOnSave = true) {
+function clearAllSlowLearnerRows() {
+    if (!confirm(`Are you sure you want to clear all rows for ${currentActiveDate}?`)) return;
+    const container = document.getElementById('slModalRowsContainer');
+    if (container) container.innerHTML = '';
+    for (let i = 0; i < 5; i++) {
+        addSlowLearnerRow({ date: currentActiveDate });
+    }
+}
+
+function collectRowsFromDOM() {
     const rows = document.querySelectorAll('#slModalRowsContainer tr.sl-row-item');
     const entries = [];
 
-    rows.forEach((tr, idx) => {
-        const date = tr.querySelector('.sl-input-date')?.value || '';
+    rows.forEach(tr => {
+        const date = tr.querySelector('.sl-input-date')?.value || currentActiveDate;
         const className = tr.querySelector('.sl-input-class')?.value || '';
         const section = tr.querySelector('.sl-input-section')?.value.trim() || '';
         const studentName = tr.querySelector('.sl-input-name')?.value.trim() || '';
@@ -167,8 +211,14 @@ async function saveAllSlowLearnerRows(redirectOnSave = true) {
         const progress = tr.querySelector('.sl-select-progress')?.value || '';
         const nextStep = tr.querySelector('.sl-textarea-nextstep')?.value.trim() || '';
 
+        let id = tr.getAttribute('data-id');
+        if (!id || id.startsWith('sl-')) {
+            id = generateUUID();
+            tr.setAttribute('data-id', id);
+        }
+
         entries.push({
-            id: tr.getAttribute('data-id') || generateUUID(),
+            id,
             date,
             className,
             section,
@@ -181,60 +231,81 @@ async function saveAllSlowLearnerRows(redirectOnSave = true) {
         });
     });
 
-    await saveSlowLearnerEntriesLocally(entries);
-    
+    return entries;
+}
+
+async function collectAndPersistCurrentDate(syncToRemote = false) {
+    const currentRows = collectRowsFromDOM();
+    const validRows = currentRows.filter(r => r.studentName || r.learningGap || r.subject || r.className);
+
+    // Replace currentActiveDate rows in allSlowLearnerEntries
+    const otherDates = allSlowLearnerEntries.filter(e => (e.date || '') !== currentActiveDate);
+    allSlowLearnerEntries = [...otherDates, ...validRows];
+
+    await saveSlowLearnerEntriesLocally(allSlowLearnerEntries);
+
+    if (syncToRemote && window.syncSlowLearnerToSupabase && localStorage.getItem('offlineMode') !== 'true') {
+        const syncResult = await window.syncSlowLearnerToSupabase(validRows, currentActiveDate);
+        return syncResult;
+    }
+    return { ok: true };
+}
+
+async function handleDateChange() {
+    const dateInput = document.getElementById('slHeaderDateInput');
+    if (!dateInput || !dateInput.value) return;
+    const newDate = dateInput.value;
+    if (newDate === currentActiveDate) return;
+
+    // Persist current edits before switching
+    await collectAndPersistCurrentDate(false);
+
+    currentActiveDate = newDate;
+    updateSlDateSubtitle();
+    updateBackLinks(newDate);
+    renderSlowLearnerForDate(newDate);
+}
+
+async function saveAllSlowLearnerRows(redirectOnSave = true) {
+    const syncResult = await collectAndPersistCurrentDate(true);
+
     let syncMsg = 'Saved locally.';
-    if (window.syncSlowLearnerToSupabase && localStorage.getItem('offlineMode') !== 'true') {
-        const syncResult = await window.syncSlowLearnerToSupabase(entries);
-        if (syncResult.ok) {
-            syncMsg = 'Synced to Supabase.';
-        } else {
-            console.error('Supabase sync failed:', syncResult.error);
-            syncMsg = 'Saved locally (Sync pending).';
-        }
+    if (syncResult && syncResult.ok) {
+        syncMsg = 'Synced to Supabase.';
+    } else if (syncResult && syncResult.error) {
+        console.error('Supabase sync error:', syncResult.error);
+        syncMsg = 'Saved locally (Sync pending).';
     }
 
-    if (typeof showToast === 'function') showToast(`💾 Slow Learner records saved! ${syncMsg}`, 'success');
-    
-    if (redirectOnSave || window.location.pathname.endsWith('slow_learner.html')) {
+    if (typeof showToast === 'function') {
+        showToast(`💾 Slow Learner records saved for ${currentActiveDate}! ${syncMsg}`, 'success');
+    }
+
+    if (redirectOnSave) {
         setTimeout(() => {
-            window.location.href = 'dashboard.html';
-        }, 1200);
+            navigateBackToDashboard();
+        }, 800);
     }
 }
 
+function navigateBackToDashboard() {
+    const d = currentActiveDate || document.getElementById('slHeaderDateInput')?.value || '';
+    window.location.href = d ? `dashboard.html?date=${encodeURIComponent(d)}` : 'dashboard.html';
+}
+
 function exportSlowLearnerCSV() {
-    const rows = document.querySelectorAll('#slModalRowsContainer tr.sl-row-item');
-    let entries = [];
+    const rows = collectRowsFromDOM();
+    const validRows = rows.filter(r => r.studentName || r.learningGap || r.subject);
 
-    if (rows.length > 0) {
-        rows.forEach(tr => {
-            const date = tr.querySelector('.sl-input-date')?.value || '';
-            const className = tr.querySelector('.sl-input-class')?.value || '';
-            const section = tr.querySelector('.sl-input-section')?.value.trim() || '';
-            const studentName = tr.querySelector('.sl-input-name')?.value.trim() || '';
-            const subject = tr.querySelector('.sl-input-subject')?.value.trim() || '';
-            const learningGap = tr.querySelector('.sl-textarea-gap')?.value.trim() || '';
-            const strategy = tr.querySelector('.sl-textarea-strategy')?.value.trim() || '';
-            const progress = tr.querySelector('.sl-select-progress')?.value || '';
-            const nextStep = tr.querySelector('.sl-textarea-nextstep')?.value.trim() || '';
-
-            entries.push({ date, className, section, studentName, subject, learningGap, strategy, progress, nextStep });
-        });
-    } else {
-        // Will only grab whatever was already parsed. If empty, getSlowLearnerEntries is async so we can't do this easily.
-        // It's fine for now. If table is empty, we just export nothing.
-    }
-
-    if (entries.length === 0) {
-        if (typeof showToast === 'function') showToast('No records to export', 'warning');
+    if (validRows.length === 0) {
+        if (typeof showToast === 'function') showToast('No records to export for this date', 'warning');
         return;
     }
 
     let csvContent = 'data:text/csv;charset=utf-8,';
     csvContent += 'Date,Class,Section,Student Name,Subject,Learning Gap,Strategy/Method Used,Progress,Next Step\n';
 
-    entries.forEach(row => {
+    validRows.forEach(row => {
         const line = [
             `"${(row.date || '').replace(/"/g, '""')}"`,
             `"${(row.className || '').replace(/"/g, '""')}"`,
@@ -252,7 +323,7 @@ function exportSlowLearnerCSV() {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `slow_learner_progress_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute('download', `slow_learner_progress_${currentActiveDate || new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -268,8 +339,52 @@ function escapeHtml(str) {
         .replace(/'/g, '&#039;');
 }
 
+async function initSlowLearner() {
+    if (isInitialized) return;
+    isInitialized = true;
+
+    // 1. Resolve active date from URL query parameter or fallback to today
+    const urlParams = new URLSearchParams(window.location.search);
+    const paramDate = urlParams.get('date');
+    if (paramDate && /^\d{4}-\d{2}-\d{2}$/.test(paramDate)) {
+        currentActiveDate = paramDate;
+    } else {
+        currentActiveDate = getTodayStr();
+    }
+
+    const dateInput = document.getElementById('slHeaderDateInput');
+    if (dateInput) {
+        dateInput.value = currentActiveDate;
+        dateInput.addEventListener('change', handleDateChange);
+    }
+    updateSlDateSubtitle();
+    updateBackLinks(currentActiveDate);
+
+    // Update school name if available
+    if (window.App && window.App.school && window.App.school.schoolName) {
+        const schoolEl = document.querySelector('.sl-modal-school');
+        if (schoolEl) schoolEl.textContent = window.App.school.schoolName;
+    }
+
+    // 2. Load dataset and render
+    await loadAllSlowLearnerEntries();
+    renderSlowLearnerForDate(currentActiveDate);
+
+    // 3. Load student autocomplete database
+    if (typeof loadTestStudents === 'function') {
+        try {
+            await loadTestStudents();
+        } catch (error) {
+            console.error('Error loading student autocomplete DB:', error);
+        }
+    }
+}
+
 // Expose functions globally
-window.getSlowLearnerEntries = getSlowLearnerEntries;
+window.initSlowLearner = initSlowLearner;
+window.handleDateChange = handleDateChange;
+window.navigateBackToDashboard = navigateBackToDashboard;
+window.getSlowLearnerEntries = loadAllSlowLearnerEntries;
 window.saveSlowLearnerEntriesLocally = saveSlowLearnerEntriesLocally;
 window.addSlowLearnerRow = addSlowLearnerRow;
 window.removeSlowLearnerRow = removeSlowLearnerRow;
@@ -277,7 +392,7 @@ window.clearAllSlowLearnerRows = clearAllSlowLearnerRows;
 window.saveAllSlowLearnerRows = saveAllSlowLearnerRows;
 window.updateSlDateSubtitle = updateSlDateSubtitle;
 window.exportSlowLearnerCSV = exportSlowLearnerCSV;
-window.renderModalRows = renderModalRows;
+window.renderModalRows = renderSlowLearnerForDate;
 window.getTodayStr = getTodayStr;
 
 // ================================================================
