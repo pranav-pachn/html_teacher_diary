@@ -849,9 +849,24 @@ textarea {
 
 .empty-state h3 {
     font-size: 18px;
-    color: #1e293b;
+    color: var(--text-main);
     font-weight: 600;
     margin-bottom: 8px;
+}
+
+.empty-state p {
+    color: var(--text-muted);
+    font-size: 14px;
+}
+
+body.dark .empty-state h3,
+body.dark .principal-empty-state h3 {
+    color: #ffffff !important;
+}
+
+body.dark .empty-state p,
+body.dark .principal-empty-state p {
+    color: #cbd5e1 !important;
 }
 
 /* ================================================================
@@ -1060,7 +1075,7 @@ textarea {
 }
 
 .principal-empty-state h3 {
-    color: #1e293b;
+    color: var(--text-main);
     font-size: 18px;
     margin: 0;
 }
@@ -1126,19 +1141,106 @@ textarea {
 .submission-teacher {
     font-weight: 700;
     font-size: 15px;
-    color: #1e293b;
+    color: var(--text-main);
 }
 
 .submission-date {
     font-size: 13px;
-    color: #64748b;
+    color: var(--text-muted);
     margin-top: 2px;
 }
 
 .submission-meta {
     font-size: 12px;
-    color: #94a3b8;
+    color: var(--text-muted);
     margin-top: 2px;
+}
+
+body.dark .submission-teacher {
+    color: #ffffff !important;
+}
+
+body.dark .submission-teacher span {
+    color: #818cf8 !important;
+}
+
+body.dark .submission-date {
+    color: #e2e8f0 !important;
+}
+
+body.dark .submission-meta {
+    color: #cbd5e1 !important;
+}
+
+body.dark .principal-filters input {
+    color: #ffffff !important;
+    background: #1e293b !important;
+    border-color: #334155 !important;
+}
+
+body.dark .principal-filters input::placeholder {
+    color: #94a3b8 !important;
+}
+
+body.dark .principal-subtabs {
+    border-bottom-color: var(--border) !important;
+}
+
+body.dark .principal-subtab {
+    color: #cbd5e1 !important;
+}
+
+body.dark .principal-subtab.active {
+    color: #818cf8 !important;
+    border-bottom-color: #818cf8 !important;
+}
+
+body.dark .card-title {
+    color: #ffffff !important;
+}
+
+body.dark .kpi-card div:last-child {
+    color: #cbd5e1 !important;
+}
+
+body.dark .review-modal {
+    background: #111827 !important;
+    border: 1px solid var(--border) !important;
+}
+
+body.dark .review-modal-header {
+    background: #111827 !important;
+    border-bottom-color: var(--border) !important;
+}
+
+body.dark .review-modal-title {
+    color: #ffffff !important;
+}
+
+body.dark .review-modal-subtitle {
+    color: #cbd5e1 !important;
+}
+
+body.dark .review-period-row {
+    background: #1e293b !important;
+    border-color: #334155 !important;
+}
+
+body.dark .review-field {
+    color: #f1f5f9 !important;
+}
+
+body.dark .review-field-label {
+    color: #cbd5e1 !important;
+}
+
+body.dark .day-card .day-date {
+    color: #ffffff !important;
+}
+
+body.dark .day-card .p-work,
+body.dark .day-card .p-home {
+    color: #f1f5f9 !important;
 }
 
 .submission-action {

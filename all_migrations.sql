@@ -565,6 +565,14 @@ CREATE POLICY "Principals can view all entries" ON public.daily_entries FOR SELE
     public.get_my_role() IN ('principal', 'admin', 'super_admin', 'vice_principal', 'hod')
   );
 
+CREATE POLICY "Teachers can delete own entries" ON public.daily_entries FOR DELETE 
+  USING (auth.uid() = teacher_id);
+
+CREATE POLICY "Principals can delete entries" ON public.daily_entries FOR DELETE 
+  USING (
+    public.get_my_role() IN ('principal', 'admin', 'super_admin', 'vice_principal')
+  );
+
 -- ATTACHMENTS
 CREATE POLICY "Principals can view all attachments" ON public.attachments FOR SELECT 
   USING (

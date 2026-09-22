@@ -77,7 +77,7 @@ async function fetchPrincipalKPIs() {
         const [cutoffHour, cutoffMinute] = cutoffSetting.split(':').map(Number);
 
         for (const e of (todayEntries || [])) {
-            activeTeachersToday.add(e.teacher_id);
+            if (e.status === 'submitted' || e.status === 'approved') activeTeachersToday.add(e.teacher_id);
             if (e.status === 'submitted') pendingSet.add(e.teacher_id);
             if (e.status === 'approved') signedSet.add(e.teacher_id);
             
@@ -315,6 +315,7 @@ async function openReviewModal(teacherId, dateStr, teacherName) {
     // Store for action handlers
     _reviewModalData = {
         teacherId,
+        date: dateStr,
         dateStr,
         teacherName,
         entryIds: latest.map(e => e.id)
@@ -430,6 +431,59 @@ async function handleRejectEntry() {
     showToast(`❌ Diary rejected for ${_reviewModalData.teacherName}`, 'info');
     closeReviewModal();
     renderPrincipalDashboard();
+}
+
+async function handleDiscardEntry() {
+    if (!_reviewModalData) return;
+    if (!confirm(`Discard this submission for ${_reviewModalData.teacherName}? It will be removed from the pending list.`)) return;
+
+    const btn = document.getElementById('discardEntryBtn');
+    const origText = btn ? btn.innerHTML : '';
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Discarding...'; }
+
+    const client = getSupabaseClient();
+    if (!client) {
+        if (btn) { btn.disabled = false; btn.innerHTML = origText; }
+        return;
+    }
+
+    try {
+        const { data: { session } } = await client.auth.getSession();
+
+        // 1. Try direct hard delete
+        const { data: delData, error: delErr } = await client
+            .from('daily_entries')
+            .delete()
+            .in('id', _reviewModalData.entryIds)
+            .select('id');
+
+        if (delErr || !delData || delData.length === 0) {
+            // 2. Fallback: revert status to draft and clear submitted_at
+            const { error: updErr } = await client
+                .from('daily_entries')
+                .update({
+                    status: 'draft',
+                    submitted_at: null,
+                    updated_at: new Date().toISOString()
+                })
+                .in('id', _reviewModalData.entryIds);
+
+            if (updErr) throw updErr;
+        }
+
+        if (session && window.writeAuditLog) {
+            await writeAuditLog(client, session.user.id, 'principal', 'DISCARD_SUBMISSION', 'daily_entries', _reviewModalData.entryIds.join(','), null, { date: _reviewModalData.date });
+        }
+
+        showToast(`🗑 Submission discarded for ${_reviewModalData.teacherName}`, 'info');
+        closeReviewModal();
+        renderPrincipalDashboard();
+    } catch (err) {
+        console.error('Error discarding submission:', err);
+        showToast(`❌ Error: ${err.message}`, 'error');
+    } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = origText; }
+    }
 }
 
 function handleRequestRevision() {
@@ -632,6 +686,7 @@ window.closeReviewModal = closeReviewModal;
 window.handleApproveEntry = handleApproveEntry;
 window.handleRequestRevision = handleRequestRevision;
 window.handleRejectEntry = handleRejectEntry;
+window.handleDiscardEntry = handleDiscardEntry;
 window.openAnalyticsModal = openAnalyticsModal;
 window.closeAnalyticsModal = closeAnalyticsModal;
 window.saveLateCutoff = saveLateCutoff;

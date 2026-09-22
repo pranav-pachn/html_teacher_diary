@@ -9,7 +9,7 @@
     <!-- Supabase JS SDK -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2">
     </script>
-    <link rel="stylesheet" href="css/styles.css?v=7.3" />
+    <link rel="stylesheet" href="css/styles.css?v=7.8" />
     <!-- Intro.js Stylesheet -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/intro.js@7.2.0/introjs.min.css" />
     <script>
@@ -141,6 +141,7 @@
                 </div>
 
                 <div class="flex-row mt-12" style="justify-content:flex-end;gap:10px;">
+                    <button class="btn btn-outline btn-outline-danger" id="deleteDailyBtn" onclick="deleteCurrentDay()" title="Delete this day's entry">🗑 Delete</button>
                     <button class="btn btn-outline" id="resetDailyBtn">↺ Reset</button>
                     <button class="btn btn-primary" id="saveDailyBtn">💾 Save</button>
                     <button class="btn btn-submit" id="submitForApprovalBtn" style="display:none;">📤 Submit for Approval</button>
@@ -217,11 +218,11 @@
                 </div>
                 
                 <!-- Filters -->
-                <div class="principal-filters" style="padding: 16px; border-bottom: 1px solid var(--border); background: var(--bg-main); display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
-                    <input type="text" id="principalFilterTeacher" placeholder="Filter by Teacher..." style="flex: 1; min-width: 150px; padding: 8px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-card); color: var(--text);" oninput="renderPrincipalDashboard()" />
-                    <input type="text" id="principalFilterClass" placeholder="Class (e.g. 10A)" style="flex: 1; min-width: 120px; padding: 8px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-card); color: var(--text);" oninput="renderPrincipalDashboard()" />
-                    <input type="text" id="principalFilterSubject" placeholder="Subject" style="flex: 1; min-width: 120px; padding: 8px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-card); color: var(--text);" oninput="renderPrincipalDashboard()" />
-                    <input type="date" id="principalFilterDate" style="flex: 1; min-width: 120px; padding: 8px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-card); color: var(--text);" onchange="renderPrincipalDashboard()" />
+                <div class="principal-filters" style="padding: 16px; border-bottom: 1px solid var(--border); background: var(--bg-card); display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
+                    <input type="text" id="principalFilterTeacher" placeholder="Filter by Teacher..." style="flex: 1; min-width: 150px; padding: 8px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-card); color: var(--text-main);" oninput="renderPrincipalDashboard()" />
+                    <input type="text" id="principalFilterClass" placeholder="Class (e.g. 10A)" style="flex: 1; min-width: 120px; padding: 8px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-card); color: var(--text-main);" oninput="renderPrincipalDashboard()" />
+                    <input type="text" id="principalFilterSubject" placeholder="Subject" style="flex: 1; min-width: 120px; padding: 8px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-card); color: var(--text-main);" oninput="renderPrincipalDashboard()" />
+                    <input type="date" id="principalFilterDate" style="flex: 1; min-width: 120px; padding: 8px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-card); color: var(--text-main);" onchange="renderPrincipalDashboard()" />
                     <button class="btn btn-outline btn-sm" onclick="document.getElementById('principalFilterTeacher').value=''; document.getElementById('principalFilterClass').value=''; document.getElementById('principalFilterSubject').value=''; document.getElementById('principalFilterDate').value=''; renderPrincipalDashboard();">Clear Filters</button>
                 </div>
 
@@ -419,6 +420,7 @@
             <div class="review-modal-actions">
                 <button class="btn btn-outline" style="margin-right: auto;" onclick="openPrincipalHistory()">🕐 Audit Trail</button>
                 <button class="btn btn-outline" onclick="closeReviewModal()">Cancel</button>
+                <button class="btn btn-outline btn-outline-danger" id="discardEntryBtn" onclick="handleDiscardEntry()" title="Discard/Delete this submission">🗑 Discard</button>
                 <button class="btn btn-danger" id="rejectEntryBtn" onclick="handleRejectEntry()">❌ Reject</button>
                 <button class="btn btn-warning" id="requestRevisionBtn" onclick="handleRequestRevision()">
                     🔄 Request Revision
@@ -473,26 +475,26 @@
     <script src="https://cdn.jsdelivr.net/npm/intro.js@7.2.0/intro.min.js" defer></script>
 
     <script src="js/boot.js" defer></script>
-    <script src="js/data.js?v=7.2" defer></script>
-    <script src="js/toast.js?v=7.2" defer></script>
+    <script src="js/data.js?v=7.6" defer></script>
+    <script src="js/toast.js?v=7.6" defer></script>
     <script src="js/env.js" defer></script>
-    <script src="js/supabase.js?v=7.2" defer></script>
-    <script src="js/file-upload.js?v=7.2" defer></script>
-    <script src="js/storage-manager.js?v=7.2" defer></script>
-    <script src="js/api.js?v=7.2" defer></script>
-    <script src="js/csv.js?v=7.2" defer></script>
-    <script src="js/auth.js?v=7.2" defer></script>
-    <script src="js/approval.js?v=1.0" defer></script>
-    <script src="js/history.js?v=1.0" defer></script>
-    <script src="js/ui.js?v=7.2" defer></script>
-    <script src="js/curriculum.js?v=7.2" defer></script>
-    <script src="js/autocomplete.js?v=7.2" defer></script>
-    <script src="js/tour.js?v=7.2" defer></script>
-    <script src="js/timetable.js?v=7.2" defer></script>
-    <script src="js/admin.js?v=7.2" defer></script>
-    <script src="js/principal.js?v=1.0" defer></script>
-    <script src="js/notifications.js?v=1.0" defer></script>
-    <script src="js/app.js?v=7.2" defer></script>
+    <script src="js/supabase.js?v=7.6" defer></script>
+    <script src="js/file-upload.js?v=7.6" defer></script>
+    <script src="js/storage-manager.js?v=7.6" defer></script>
+    <script src="js/api.js?v=7.6" defer></script>
+    <script src="js/csv.js?v=7.6" defer></script>
+    <script src="js/auth.js?v=7.6" defer></script>
+    <script src="js/approval.js?v=7.6" defer></script>
+    <script src="js/history.js?v=7.6" defer></script>
+    <script src="js/ui.js?v=7.6" defer></script>
+    <script src="js/curriculum.js?v=7.6" defer></script>
+    <script src="js/autocomplete.js?v=7.6" defer></script>
+    <script src="js/tour.js?v=7.6" defer></script>
+    <script src="js/timetable.js?v=7.6" defer></script>
+    <script src="js/admin.js?v=7.6" defer></script>
+    <script src="js/principal.js?v=7.6" defer></script>
+    <script src="js/notifications.js?v=7.6" defer></script>
+    <script src="js/app.js?v=7.6" defer></script>
 
     <!-- ====== TEACHER ANALYTICS MODAL ====== -->
     <div id="teacher-analytics-modal" class="review-modal-overlay" style="display:none;">

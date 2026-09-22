@@ -187,6 +187,7 @@ if (typeof window.onAppReady === 'function') {
 window.toggleDayCard = toggleDayCard;
 window.editDay = editDay;
 window.deleteDay = deleteDay;
+window.deleteCurrentDay = typeof deleteCurrentDay === 'function' ? deleteCurrentDay : window.deleteCurrentDay;
 window.openLightbox = openLightbox;
 window.closeLightbox = closeLightbox;
 window.switchAuthTab = switchAuthTab;

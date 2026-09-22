@@ -514,7 +514,7 @@ function attachLiveStatusListeners() {
 // ================================================================
 //  APPROVAL BANNER (teacher view)
 // ================================================================
-async function updateApprovalBanner(dateStr) {
+async function updateApprovalBanner(dateStr, knownStatus = null) {
     const banner = document.getElementById('approvalStatusBanner');
     const icon = document.getElementById('approvalStatusIcon');
     const title = document.getElementById('approvalStatusTitle');
@@ -535,7 +535,7 @@ async function updateApprovalBanner(dateStr) {
         return;
     }
 
-    const dayStatus = await fetchDayStatus(dateStr);
+    const dayStatus = knownStatus || await fetchDayStatus(dateStr);
 
     const periodCards = document.getElementById('periodCards');
     const allInputs = periodCards ? periodCards.querySelectorAll('input, textarea, select') : [];
@@ -619,21 +619,20 @@ async function handleSubmitForApproval() {
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner"></span> Submitting...';
 
-    // Save first to ensure latest data is synced
-    await saveDaily();
-
-    const result = await submitDayForApproval(dateStr);
+    // We now pass targetStatus: 'submitted' directly to saveDaily, unifying the persistence flow
+    const result = await saveDaily({ targetStatus: 'submitted' });
 
     btn.disabled = false;
     btn.innerHTML = origText;
 
-    if (!result.ok) {
-        showToast(`❌ Submit failed: ${result.error}`, 'error');
-        return;
+    if (result && result.ok) {
+        updateApprovalBanner(dateStr, { 
+            status: 'submitted', 
+            submittedAt: result.submittedAt 
+        });
+    } else {
+        updateApprovalBanner(dateStr);
     }
-
-    showToast(`📤 Diary submitted for approval! (${result.count} period${result.count !== 1 ? 's' : ''})`, 'success');
-    updateApprovalBanner(dateStr);
 }
 
 window.updateApprovalBanner = updateApprovalBanner;
@@ -753,7 +752,13 @@ async function removeFile(periodNumber, index, isExisting) {
     }
 }
 
-async function saveDaily() {
+async function saveDaily(options = {}) {
+    const isEvent = options && typeof options.preventDefault === 'function';
+    if (isEvent) {
+        options.preventDefault();
+        options = {};
+    }
+    const targetStatus = options.targetStatus || 'draft';
     const dateStr = document.getElementById('dailyDate').value;
     if (!dateStr) { 
         if (!window.isAutoSaving) showToast('Please select a date.', 'warning'); 
@@ -829,26 +834,41 @@ async function saveDaily() {
         };
 
         if (typeof saveEntryToSupabase === 'function') {
-            const result = await saveEntryToSupabase(dateStr, periods);
+            const result = await saveEntryToSupabase(dateStr, periods, { targetStatus });
             if (!result.ok && !window.isAutoSaving) {
                 showToast(`⚠️ Sync failed. Saved offline.`, 'warning');
                 syncUI();
             } else if (result.ok && !window.isAutoSaving) {
-                showToast(`✅ Saved activities for ${formatDate(dateStr)}`, 'success');
+                if (targetStatus === 'submitted') {
+                    showToast(`📤 Diary submitted for approval! (${result.count || periods.length} periods)`, 'success');
+                } else {
+                    showToast(`✅ Saved activities for ${formatDate(dateStr)}`, 'success');
+                }
                 syncUI();
             }
+            
+            if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = originalBtnHtml; }
+            if (stickySaveBtn) { stickySaveBtn.disabled = false; stickySaveBtn.textContent = '✓ Save All'; }
+            if (floatingStatus) { floatingStatus.classList.remove('visible'); }
+            
+            if (typeof updateBadge === 'function') updateBadge();
+            if (document.getElementById('tab-view')?.classList.contains('active')) renderViewTab();
+            
+            return result;
         } else {
             saveDayEntry(dateStr, periods);
             if (!window.isAutoSaving) {
                 showToast(`✅ Saved activities for ${formatDate(dateStr)}`, 'success');
                 syncUI();
             }
+            if (typeof updateBadge === 'function') updateBadge();
+            if (document.getElementById('tab-view')?.classList.contains('active')) renderViewTab();
+
+            return { ok: true, periodsSaved: periods.length };
         }
-        
-        if (typeof updateBadge === 'function') updateBadge();
-        if (document.getElementById('tab-view')?.classList.contains('active')) renderViewTab();
     } catch (err) {
         if (!window.isAutoSaving) showToast(`❌ Error saving: ${err.message}`, 'error');
+        return { ok: false, error: err.message };
     } finally {
         if (!window.isAutoSaving) {
             if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = originalBtnHtml; }
@@ -1058,15 +1078,36 @@ function editDay(dateStr) {
     showToast(`✏️ Editing ${formatDate(dateStr)}`, 'info');
 }
 
-function deleteDay(dateStr) {
+async function deleteDay(dateStr) {
+    if (!dateStr) return;
     if (!confirm(`Delete entry for ${formatDate(dateStr)}?`)) return;
+    
+    // Call Supabase to delete if online/available
+    if (typeof deleteEntryFromSupabase === 'function') {
+        const result = await deleteEntryFromSupabase(dateStr);
+        if (!result.ok && result.error !== 'Supabase not configured') {
+            showToast(`⚠️ Supabase sync failed: ${result.error}. Deleted locally.`, 'warning');
+        }
+    }
+    
     deleteDayEntry(dateStr);
+    
     showToast(`🗑 Deleted ${formatDate(dateStr)}`, 'warning');
     renderViewTab();
     updateBadge();
-    const dailyDate = document.getElementById('dailyDate').value;
+    const dailyDate = document.getElementById('dailyDate')?.value;
     if (dailyDate === dateStr) renderDailyTab();
 }
+
+function deleteCurrentDay() {
+    const dateInput = document.getElementById('dailyDate');
+    const dateStr = dateInput ? dateInput.value : getTodayStr();
+    if (dateStr) {
+        deleteDay(dateStr);
+    }
+}
+window.deleteDay = deleteDay;
+window.deleteCurrentDay = deleteCurrentDay;
 
 // ================================================================
 //  UI: SETTINGS TAB
